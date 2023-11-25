@@ -12,7 +12,7 @@ import (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "wc",
-	Short: "A brief description of your application",
+	Short: "File statistics",
 }
 
 func Execute() {
@@ -23,6 +23,5 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
-	rootCmd.PersistentFlags().String("file", "", "file to read")
+	rootCmd.PersistentFlags().StringP("file", "f", "", "file to read")
 }
