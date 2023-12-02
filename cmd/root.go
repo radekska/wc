@@ -23,5 +23,6 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringP("file", "f", "", "file to read")
+	// rootCmd.PersistentFlags().StringP("file", "f", "", "file to read")
+	rootCmd.PersistentFlags().StringArrayP("file", "f", []string{}, "file to read")
 }

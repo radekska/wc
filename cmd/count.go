@@ -3,25 +3,28 @@ package cmd
 import (
 	"os"
 
+	"github.com/radekska/wc/pkg"
 	"github.com/spf13/cobra"
 )
 
-func count(countFunc func(string) (error, int)) func(*cobra.Command, []string) {
+func count(countFunc func([]string) (error, []pkg.Counted)) func(*cobra.Command, []string) {
 	return func(cmd *cobra.Command, args []string) {
-		file, err := cmd.Flags().GetString("file")
+		files, err := cmd.Flags().GetStringArray("file")
 		if err != nil {
 			cmd.PrintErr(err)
 			os.Exit(1)
 		}
-		if file == "" {
+		if len(files) == 0 {
 			cmd.Help()
 			return
 		}
-		err, words := countFunc(file)
+		err, counted := countFunc(files)
 		if err != nil {
 			cmd.PrintErr(err)
 			return
 		}
-		cmd.Println(words)
+		for _, c := range counted {
+			cmd.Printf("%s: %d\n", c.File, c.Count)
+		}
 	}
 }
