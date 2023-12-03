@@ -13,7 +13,22 @@ import (
 type Counted struct {
 	File  string
 	Count int
-	err   error
+	Err   error
+}
+
+type CountedFiles struct {
+	Files []Counted
+	mu    sync.Mutex
+}
+
+func NewCountedFiles(s int) *CountedFiles {
+	return &CountedFiles{Files: make([]Counted, 0, s)}
+}
+
+func (cf *CountedFiles) Add(c Counted) {
+	cf.mu.Lock()
+	defer cf.mu.Unlock()
+	cf.Files = append(cf.Files, c)
 }
 
 func count(file string, countFunc func(string) int) (error, int) {
@@ -37,40 +52,32 @@ func count(file string, countFunc func(string) int) (error, int) {
 	return nil, count
 }
 
-func countMany(files []string, countFunc func(string) int) (error, []Counted) {
+func countMany(files []string, countFunc func(string) int) *CountedFiles {
 	var wg sync.WaitGroup
 
-	countedFiles := make([]Counted, 0, len(files))
-	ch := make(chan Counted, len(files))
+	countedFiles := NewCountedFiles(len(files))
 
 	for _, file := range files {
 		wg.Add(1)
 		go func(f string) {
 			defer wg.Done()
 			err, counted := count(f, countFunc)
-			ch <- Counted{f, counted, err}
+			countedFiles.Add(Counted{File: f, Count: counted, Err: err})
 		}(file)
 	}
 	wg.Wait()
-	close(ch)
 
-	for c := range ch {
-		countedFiles = append(countedFiles, c)
-		if c.err != nil {
-			return c.err, nil
-		}
-	}
-	return nil, countedFiles
+	return countedFiles
 }
 
-func CountLines(files []string) (error, []Counted) {
+func CountLines(files []string) *CountedFiles {
 	return countMany(files, func(s string) int { return 1 })
 }
 
-func CountWords(files []string) (error, []Counted) {
+func CountWords(files []string) *CountedFiles {
 	return countMany(files, func(s string) int { return len(strings.Fields(s)) })
 }
 
-func CountCharacters(files []string) (error, []Counted) {
+func CountCharacters(files []string) *CountedFiles {
 	return countMany(files, func(s string) int { return len(s) })
 }
