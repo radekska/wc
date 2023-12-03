@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,9 +12,56 @@ import (
 )
 
 type Counted struct {
-	File  string
-	Count int
-	err   error
+	File  string `json:"file"`
+	Count int    `json:"count"`
+}
+
+func orchestrate(files []string, output string, countFunc func(string) int) error {
+	errCh := make(chan error)
+	ch := make(chan Counted, len(files))
+
+	go save(output, len(files), ch, errCh)
+	go countMany(files, ch, errCh, countFunc)
+
+	for {
+		select {
+		case err := <-errCh:
+			return err
+		}
+	}
+}
+
+func save(output string, numFiles int, ch <-chan Counted, errCh chan<- error) {
+	f, err := os.Create(output)
+	if err != nil {
+		errCh <- err
+	}
+	defer f.Close()
+
+	countedFiles := make([]Counted, 0, numFiles)
+	e := json.NewEncoder(f)
+	for c := range ch {
+		countedFiles = append(countedFiles, c)
+	}
+	errCh <- e.Encode(countedFiles)
+}
+
+func countMany(files []string, ch chan<- Counted, errCh chan<- error, countFunc func(string) int) {
+	var wg sync.WaitGroup
+
+	for _, file := range files {
+		wg.Add(1)
+		go func(f string) {
+			defer wg.Done()
+			err, counted := count(f, countFunc)
+			if err != nil {
+				errCh <- err
+			}
+			ch <- Counted{f, counted}
+		}(file)
+	}
+	wg.Wait()
+	close(ch)
 }
 
 func count(file string, countFunc func(string) int) (error, int) {
@@ -37,40 +85,14 @@ func count(file string, countFunc func(string) int) (error, int) {
 	return nil, count
 }
 
-func countMany(files []string, countFunc func(string) int) (error, []Counted) {
-	var wg sync.WaitGroup
-
-	countedFiles := make([]Counted, 0, len(files))
-	ch := make(chan Counted, len(files))
-
-	for _, file := range files {
-		wg.Add(1)
-		go func(f string) {
-			defer wg.Done()
-			err, counted := count(f, countFunc)
-			ch <- Counted{f, counted, err}
-		}(file)
-	}
-	wg.Wait()
-	close(ch)
-
-	for c := range ch {
-		countedFiles = append(countedFiles, c)
-		if c.err != nil {
-			return c.err, nil
-		}
-	}
-	return nil, countedFiles
+func CountLines(files []string, output string) error {
+	return orchestrate(files, output, func(s string) int { return 1 })
 }
 
-func CountLines(files []string) (error, []Counted) {
-	return countMany(files, func(s string) int { return 1 })
+func CountWords(files []string, output string) error {
+	return orchestrate(files, output, func(s string) int { return len(strings.Fields(s)) })
 }
 
-func CountWords(files []string) (error, []Counted) {
-	return countMany(files, func(s string) int { return len(strings.Fields(s)) })
-}
-
-func CountCharacters(files []string) (error, []Counted) {
-	return countMany(files, func(s string) int { return len(s) })
+func CountCharacters(files []string, output string) error {
+	return orchestrate(files, output, func(s string) int { return len(s) })
 }
